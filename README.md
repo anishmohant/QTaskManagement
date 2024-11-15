@@ -2,6 +2,8 @@
 
 Welcome to the **QTask Management System**! This tool helps you manage tasks, track progress, take notes, and set timers for focused work. This guide will walk you through the features and how to use them effectively.
 
+[Open Live App Online](https://anishmohant.github.io/QTaskManagement/)
+
 ---
 
 ## 1. Overview
