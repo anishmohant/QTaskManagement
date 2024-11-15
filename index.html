@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>QTaskManagement System</title>
+    <!-- Include TinyMCE for rich text editing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tinymce/6.8.2/tinymce.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+    
+        body {
+            font-family: Arial, sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+    
+        .top-row {
+            display: flex;
+            flex: 1;
+            width: 100%;
+        }
+    
+        .quadrant {
+            flex: 1;
+            padding: 20px;
+            border: 1px solid #ccc;
+            overflow: auto;
+        }
+    
+        .notes-container {
+            height: 50vh; /* Adjusted to take the bottom half of the screen */
+            border-top: 1px solid #ccc;
+            padding: 20px;
+        }
+    
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding: 10px;
+            background: #f5f5f5;
+        }
+    
+        .notes-header {
+            padding: 15px 20px;
+            background: #f5f5f5;
+            border-bottom: 1px solid #ddd;
+        }
+    
+        .notes-header h2 {
+            margin: 0;
+            color: #333;
+        }
+    
+        .timer-select {
+            padding: 5px;
+        }
+    
+        .list-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            margin: 5px 0;
+            background: #f5f5f5;
+            border: 1px solid #ddd;
+            cursor: move;
+        }
+    
+        .list-item.active {
+            background: #ff6b6b;
+            color: white;
+        }
+    
+        .delete-btn {
+            background: #ff4444;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            cursor: pointer;
+        }
+    
+        .add-btn {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px;
+            cursor: pointer;
+        }
+    
+        .dropzone {
+            min-height: 100px;
+            border: 2px dashed #ccc;
+            margin-top: 10px;
+            padding: 10px;
+        }
+    
+        .dropzone.dragover {
+            background: #e1f5fe;
+            border-color: #29b6f6;
+        }
+    
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+        }
+    
+        .modal-content {
+            background: white;
+            margin: 15% auto;
+            padding: 20px;
+            width: 50%;
+            border-radius: 5px;
+        }
+    
+        .modal-content input {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+    
+        .modal-content button {
+            padding: 8px 15px;
+            margin: 5px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+    
+        .modal-content button:first-of-type {
+            background: #4CAF50;
+            color: white;
+        }
+    
+        .modal-content button:last-of-type {
+            background: #f44336;
+            color: white;
+        }
+    
+        .keyboard-shortcut {
+            color: #666;
+            font-size: 0.8em;
+            margin-left: 10px;
+        }
+    </style>
+    
+</head>
+<body>
+    <div class="top-row">
+        <div id="quadrant1" class="quadrant">
+            <div class="header">
+                <span>Task List</span>
+                <button class="add-btn" onclick="showAddItemModal()">
+                    Add Item
+                    <span class="keyboard-shortcut">(T)</span>
+                </button>
+            </div>
+            <div id="taskList" class="dropzone"></div>
+        </div>
+
+        <div id="quadrant2" class="quadrant">
+            <div class="header">
+                <span>Active Tasks</span>
+                <select class="timer-select" onchange="updateTimer(this.value)">
+                    <option value="1">1 Min</option>
+                    <option value="3">3 Mins</option>
+                    <option value="5">5 Mins</option>
+                    <option value="10">10 Mins</option>
+                    <option value="30">30 Mins</option>
+                    <option value="45">45 Mins</option>
+                    <option value="60">60 Mins</option>
+                </select>
+            </div>
+            <div id="activeList" class="dropzone"></div>
+        </div>
+    </div>
+
+    <div class="notes-container">
+        <div class="notes-header">
+            <h2 id="activeTaskTitle">Notes</h2>
+        </div>
+        <textarea id="notesArea"></textarea>
+    </div>
+
+    <div id="addItemModal" class="modal">
+        <div class="modal-content">
+            <h2>Add New Task</h2>
+            <input type="text" id="newItemTitle" placeholder="Task Title">
+            <button onclick="addNewItem()">Add</button>
+            <button onclick="closeModal()">Cancel</button>
+        </div>
+    </div>
+
+    <script>
+        // Data structure for tasks
+        let tasks = JSON.parse(localStorage.getItem('tasks')) || [];
+        let activeTaskId = null;
+        let timerDuration = 30; // minutes
+        let currentTimer = null;
+        let editor = null;
+
+        // Initialize the application
+        function init() {
+            initializeTinyMCE();
+            renderTasks();
+            loadFromStorage();
+            initializeDragAndDrop();
+            initializeKeyboardShortcuts();
+        }
+
+        function initializeTinyMCE() {
+    tinymce.init({
+        selector: '#notesArea',
+        height: '100%',
+        menubar: true,
+        plugins: [
+            'advlist', 'autolink', 'lists', 'link', 'image', 'charmap', 'preview',
+            'anchor', 'searchreplace', 'visualblocks', 'code', 'fullscreen',
+            'insertdatetime', 'media', 'table', 'help', 'wordcount', 'emoticons', 'spellchecker'
+        ],
+        toolbar: 'undo redo | formatselect | ' +
+            'bold italic underline backcolor | alignleft aligncenter ' +
+            'alignright alignjustify | bullist numlist outdent indent | ' +
+            'removeformat | link image | table emoticons | help',
+        setup: function(ed) {
+            editor = ed;
+            ed.on('change', function(e) {
+                updateNotes(ed.getContent());
+            });
+        }
+    });
+}
+
+
+        function initializeKeyboardShortcuts() {
+            document.addEventListener('keydown', function(e) {
+                // 'T' key for adding new task
+                if (e.key.toLowerCase() === 't' && !e.ctrlKey && !e.metaKey && 
+                    document.activeElement.tagName !== 'INPUT' && 
+                    document.activeElement.tagName !== 'TEXTAREA') {
+                    e.preventDefault();
+                    showAddItemModal();
+                }
+            });
+        }
+
+        function initializeDragAndDrop() {
+            const dropzones = document.querySelectorAll('.dropzone');
+            
+            dropzones.forEach(dropzone => {
+                dropzone.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    dropzone.classList.add('dragover');
+                });
+
+                dropzone.addEventListener('dragleave', (e) => {
+                    e.preventDefault();
+                    dropzone.classList.remove('dragover');
+                });
+
+                dropzone.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    dropzone.classList.remove('dragover');
+                    const taskId = parseInt(e.dataTransfer.getData('taskId'));
+                    handleDrop(taskId, dropzone.id);
+                });
+            });
+        }
+
+        // Storage functions
+        function saveToStorage() {
+            localStorage.setItem('tasks', JSON.stringify(tasks));
+        }
+
+        function loadFromStorage() {
+            tasks = JSON.parse(localStorage.getItem('tasks')) || [];
+            renderTasks();
+            updateNotesDisplay();
+        }
+
+        // Task management functions
+        function addNewItem() {
+            const titleInput = document.getElementById('newItemTitle');
+            const title = titleInput.value.trim();
+            if (title) {
+                const task = {
+                    id: Date.now(),
+                    title: title,
+                    notes: '',
+                    active: false,
+                    inActiveList: false
+                };
+                tasks.push(task);
+                saveToStorage();
+                renderTasks();
+                closeModal();
+            }
+        }
+
+        function deleteTask(id, event) {
+            event.stopPropagation();
+            tasks = tasks.filter(task => task.id !== id);
+            if (id === activeTaskId) {
+                activeTaskId = null;
+                updateNotesDisplay();
+            }
+            saveToStorage();
+            renderTasks();
+        }
+
+        function showAddItemModal() {
+            const modal = document.getElementById('addItemModal');
+            const titleInput = document.getElementById('newItemTitle');
+            modal.style.display = 'block';
+            titleInput.value = '';
+            titleInput.focus();
+
+            // Handle Enter key in the modal
+            titleInput.onkeypress = function(e) {
+                if (e.key === 'Enter') {
+                    addNewItem();
+                }
+            };
+        }
+
+        function closeModal() {
+            document.getElementById('addItemModal').style.display = 'none';
+        }
+
+        // Drag and drop functions
+        function handleDrop(taskId, targetListId) {
+            const task = tasks.find(t => t.id === taskId);
+            if (task) {
+                task.inActiveList = targetListId === 'activeList';
+                if (task.inActiveList && !tasks.find(t => t.active && t.inActiveList)) {
+                    activateTask(taskId);
+                }
+                saveToStorage();
+                renderTasks();
+            }
+        }
+
+        // Timer functions
+        function updateTimer(value) {
+            timerDuration = parseInt(value);
+            if (activeTaskId) {
+                resetTimer();
+            }
+        }
+
+        function resetTimer() {
+            if (currentTimer) {
+                clearTimeout(currentTimer);
+            }
+            currentTimer = setTimeout(() => {
+                rotateActiveTask();
+            }, timerDuration * 60 * 1000);
+        }
+
+        function rotateActiveTask() {
+            const activeTasks = tasks.filter(t => t.inActiveList);
+            if (activeTasks.length > 1) {
+                const currentIndex = activeTasks.findIndex(t => t.id === activeTaskId);
+                const nextIndex = (currentIndex + 1) % activeTasks.length;
+                activateTask(activeTasks[nextIndex].id);
+            }
+        }
+
+        function activateTask(id) {
+            tasks.forEach(task => task.active = task.id === id);
+            activeTaskId = id;
+            updateNotesDisplay();
+            resetTimer();
+            saveToStorage();
+            renderTasks();
+
+            // Update the notes header with active task title
+            const activeTask = tasks.find(t => t.id === id);
+            const titleElement = document.getElementById('activeTaskTitle');
+            titleElement.textContent = activeTask ? `Notes: ${activeTask.title}` : 'Notes';
+        }
+
+        // Notes functions
+        function updateNotes(content) {
+    const task = tasks.find(t => t.id === activeTaskId);
+    if (task) {
+        task.notes = content;
+        saveToStorage();  // Store updated notes
+    }
+}
+
+
+        function updateNotesDisplay() {
+            const task = tasks.find(t => t.id === activeTaskId);
+            if (editor) {
+                editor.setContent(task ? task.notes : '');
+            }
+            // Update header
+            const titleElement = document.getElementById('activeTaskTitle');
+            titleElement.textContent = task ? `Notes: ${task.title}` : 'Notes';
+        }
+
+        // Rendering functions
+        function renderTasks() {
+            const taskList = document.getElementById('taskList');
+            const activeList = document.getElementById('activeList');
+            
+            taskList.innerHTML = '';
+            activeList.innerHTML = '';
+
+            tasks.forEach(task => {
+                const element = createTaskElement(task);
+                if (task.inActiveList) {
+                    activeList.appendChild(element);
+                } else {
+                    taskList.appendChild(element);
+                }
+            });
+        }
+
+        function createTaskElement(task) {
+            const div = document.createElement('div');
+            div.className = `list-item ${task.active ? 'active' : ''}`;
+            div.draggable = true;
+            div.setAttribute('data-id', task.id);
+            
+            div.addEventListener('dragstart', (e) => {
+                e.dataTransfer.setData('taskId', task.id);
+                e.dataTransfer.effectAllowed = 'move';
+            });
+            
+            div.innerHTML = `
+                ${task.title}
+                <button class="delete-btn" onclick="deleteTask(${task.id}, event)">×</button>
+            `;
+
+            if (task.inActiveList) {
+                div.onclick = () => activateTask(task.id);
+            }
+
+            return div;
+        }
+
+        // Initialize the application
+        init();
+    </script>
+</body>
+</html>
